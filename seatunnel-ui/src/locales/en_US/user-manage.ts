@@ -15,10 +15,17 @@
  * limitations under the License.
  */
 
-type Locales = 'zh_CN' | 'en_US'
-
-interface LocalesStore {
-  locales: Locales
+export default {
+  user_manage: 'User Manage',
+  create: 'Create',
+  username: 'Username',
+  state: 'State',
+  email: 'Email',
+  creation_time: 'Creation Time',
+  last_landing_time: 'Last Landing Time',
+  operation: 'Operation',
+  enable: 'Enable',
+  disable: 'Disable',
+  edite: 'Edite',
+  delete: 'Delete'
 }
-
-export { LocalesStore, Locales }

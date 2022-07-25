@@ -15,28 +15,38 @@
  * limitations under the License.
  */
 
-import utils from '@/utils'
-import type { Component } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { reactive, h } from 'vue'
+import { useRouter } from 'vue-router'
+import type { Router } from 'vue-router'
 
-const modules = import.meta.glob('/src/views/**/**.tsx')
-const components: { [key: string]: Component } = utils.mapping(modules)
+export function useSettingDropdown() {
+  const { t } = useI18n()
+  const router: Router = useRouter()
 
-export default {
-  path: '/datapipes',
-  name: 'datapipes',
-  meta: {
-    title: 'datapipes'
-  },
-  redirect: { name: 'datapipes-list' },
-  component: () => import('@/layouts/dashboard'),
-  children: [
+  const dropdownOptions = [
     {
-      path: '/datapipes/list',
-      name: 'datapipes-list',
-      component: components['datapipes-list'],
-      meta: {
-        title: 'datapipes-list'
-      }
+      key: 'header',
+      type: 'render',
+      render: () =>
+        h('h3', { class: ['py-1.5', 'px-3', 'font-medium'] }, t('menu.manage'))
     },
+    {
+      key: 'header-divider',
+      type: 'divider'
+    },
+    { key: 'user-manage', label: t('menu.user_manage') }
   ]
+
+  const state = reactive({
+    dropdownOptions
+  })
+
+  const handleSelect = (key: string) => {
+    if (key === 'user-manage') {
+      router.push({ path: '/user-manage' })
+    }
+  }
+
+  return { state, handleSelect }
 }

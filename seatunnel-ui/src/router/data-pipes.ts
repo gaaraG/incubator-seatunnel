@@ -15,10 +15,28 @@
  * limitations under the License.
  */
 
-type Locales = 'zh_CN' | 'en_US'
+import utils from '@/utils'
+import type { Component } from 'vue'
 
-interface LocalesStore {
-  locales: Locales
+const modules = import.meta.glob('/src/views/**/**.tsx')
+const components: { [key: string]: Component } = utils.mapping(modules)
+
+export default {
+  path: '/data-pipes',
+  name: 'data-pipes',
+  meta: {
+    title: 'data-pipes'
+  },
+  redirect: { name: 'data-pipes-list' },
+  component: () => import('@/layouts/dashboard'),
+  children: [
+    {
+      path: '/data-pipes/list',
+      name: 'data-pipes-list',
+      component: components['data-pipes-list'],
+      meta: {
+        title: 'data-pipes-list'
+      }
+    }
+  ]
 }
-
-export { LocalesStore, Locales }

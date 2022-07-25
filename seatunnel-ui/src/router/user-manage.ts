@@ -15,10 +15,28 @@
  * limitations under the License.
  */
 
-type Locales = 'zh_CN' | 'en_US'
+import utils from '@/utils'
+import type { Component } from 'vue'
 
-interface LocalesStore {
-  locales: Locales
+const modules = import.meta.glob('/src/views/**/**.tsx')
+const components: { [key: string]: Component } = utils.mapping(modules)
+
+export default {
+  path: '/user-manage',
+  name: 'user-manage',
+  meta: {
+    title: 'user-manage'
+  },
+  redirect: { name: 'user-manage-list' },
+  component: () => import('@/layouts/dashboard'),
+  children: [
+    {
+      path: '/user-manage/list',
+      name: 'user-manage-list',
+      component: components['user-manage-list'],
+      meta: {
+        title: 'user-manage-list'
+      }
+    }
+  ]
 }
-
-export { LocalesStore, Locales }

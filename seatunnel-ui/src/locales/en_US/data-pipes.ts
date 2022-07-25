@@ -15,10 +15,21 @@
  * limitations under the License.
  */
 
-type Locales = 'zh_CN' | 'en_US'
-
-interface LocalesStore {
-  locales: Locales
+export default {
+  data_pipes: 'Data Pipes',
+  create: 'Create',
+  name: 'Name',
+  state: 'State',
+  executed_time: 'Executed Time',
+  modification_time: 'Modification Time',
+  operation: 'Operation',
+  succeed: 'Succeed',
+  running: 'Running',
+  failed: 'Failed',
+  killed: 'Killed',
+  un_start: 'Un Start',
+  execute: 'Execute',
+  edite: 'Edite',
+  publish: 'Publish',
+  delete: 'Delete'
 }
-
-export { LocalesStore, Locales }

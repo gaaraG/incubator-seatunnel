@@ -15,15 +15,31 @@
  * limitations under the License.
  */
 
-import { defineComponent } from 'vue'
+import { reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import type { Router } from 'vue-router'
 
-const DataPipesList = defineComponent({
-  setup() {},
-  render() {
-    return (
-      <div>datapipes</div>
-    )
+export function useUserDropdown() {
+  const router: Router = useRouter()
+  const { t } = useI18n()
+
+  const dropdownOptions = [
+    { key: 'help', label: t('menu.help') },
+    { key: 'logout', label: t('menu.logout') }
+  ]
+
+  const state = reactive({
+    dropdownOptions
+  })
+
+  const handleSelect = (key: string) => {
+    if (key === 'help') {
+      window.open('http://seatunnel.incubator.apache.org/versions/')
+    } else if (key === 'logout') {
+      router.push({ path: '/login' })
+    }
   }
-})
 
-export default DataPipesList
+  return { state, handleSelect }
+}
