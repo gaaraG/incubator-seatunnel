@@ -17,8 +17,8 @@
 
 package org.apache.seatunnel.connectors.seatunnel.http.source;
 
+import org.apache.seatunnel.api.common.JobContext;
 import org.apache.seatunnel.api.common.PrepareFailException;
-import org.apache.seatunnel.api.common.SeaTunnelContext;
 import org.apache.seatunnel.api.serialization.DeserializationSchema;
 import org.apache.seatunnel.api.source.Boundedness;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
@@ -45,7 +45,7 @@ import com.google.auto.service.AutoService;
 public class HttpSource extends AbstractSingleSplitSource<SeaTunnelRow> {
     protected final HttpParameter httpParameter = new HttpParameter();
     protected SeaTunnelRowType rowType;
-    protected SeaTunnelContext seaTunnelContext;
+    protected JobContext jobContext;
     protected DeserializationSchema<SeaTunnelRow> deserializationSchema;
 
     @Override
@@ -55,7 +55,7 @@ public class HttpSource extends AbstractSingleSplitSource<SeaTunnelRow> {
 
     @Override
     public Boundedness getBoundedness() {
-        return JobMode.BATCH.equals(seaTunnelContext.getJobMode()) ? Boundedness.BOUNDED : Boundedness.UNBOUNDED;
+        return JobMode.BATCH.equals(jobContext.getJobMode()) ? Boundedness.BOUNDED : Boundedness.UNBOUNDED;
     }
 
     @Override
@@ -68,24 +68,28 @@ public class HttpSource extends AbstractSingleSplitSource<SeaTunnelRow> {
         if (pluginConfig.hasPath(HttpConfig.SCHEMA)) {
             Config schema = pluginConfig.getConfig(HttpConfig.SCHEMA);
             this.rowType = SeaTunnelSchema.buildWithConfig(schema).getSeaTunnelRowType();
+            // default use json format
+            String format = HttpConfig.DEFAULT_FORMAT;
+            if (pluginConfig.hasPath(HttpConfig.FORMAT)) {
+                format = pluginConfig.getString(HttpConfig.FORMAT);
+            }
+            switch (format) {
+                case HttpConfig.DEFAULT_FORMAT:
+                    this.deserializationSchema = new JsonDeserializationSchema(false, false, rowType);
+                    break;
+                default:
+                    // TODO: use format SPI
+                    throw new UnsupportedOperationException("Unsupported format: " + format);
+            }
         } else {
             this.rowType = SeaTunnelSchema.buildSimpleTextSchema();
-        }
-        // TODO: use format SPI
-        // default use json format
-        String format;
-        if (pluginConfig.hasPath(HttpConfig.FORMAT)) {
-            format = pluginConfig.getString(HttpConfig.FORMAT);
-            this.deserializationSchema = null;
-        } else {
-            format = HttpConfig.DEFAULT_FORMAT;
-            this.deserializationSchema = new JsonDeserializationSchema(false, false, rowType);
+            this.deserializationSchema = new SimpleTextDeserializationSchema(this.rowType);
         }
     }
 
     @Override
-    public void setSeaTunnelContext(SeaTunnelContext seaTunnelContext) {
-        this.seaTunnelContext = seaTunnelContext;
+    public void setJobContext(JobContext jobContext) {
+        this.jobContext = jobContext;
     }
 
     @Override
