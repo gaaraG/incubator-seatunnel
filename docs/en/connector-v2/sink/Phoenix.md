@@ -15,7 +15,6 @@ Two ways of connecting Phoenix with Java JDBC. One is to connect to zookeeper th
 ## Key features
 
 - [ ] [exactly-once](../../concept/connector-v2-features.md)
-- [ ] [schema projection](../../concept/connector-v2-features.md)
 
 ## Options
 
@@ -24,6 +23,10 @@ if you use phoenix (thick) driver the value is `org.apache.phoenix.jdbc.PhoenixD
 
 ### url [string]
 if you use phoenix (thick) driver the value is `jdbc:phoenix:localhost:2182/hbase` or you use (thin) driver the value is `jdbc:phoenix:thin:url=http://localhost:8765;serialization=PROTOBUF`
+
+### common options
+
+Sink plugin common parameters, please refer to [Sink Common Options](common-options.md) for details
 
 ## Example
 use thick client drive
@@ -44,3 +47,9 @@ use thin client drive
         query = "upsert into test.sink(age, name) values(?, ?)"
     }
 ```
+
+## Changelog
+
+### 2.2.0-beta 2022-09-26
+
+- Add Phoenix Sink Connector

@@ -17,6 +17,8 @@
 
 package org.apache.seatunnel.core.starter.flink.command;
 
+import static org.apache.seatunnel.core.starter.utils.FileUtils.checkConfigExist;
+
 import org.apache.seatunnel.core.starter.command.Command;
 import org.apache.seatunnel.core.starter.config.ConfigBuilder;
 import org.apache.seatunnel.core.starter.exception.CommandExecuteException;
@@ -26,8 +28,7 @@ import org.apache.seatunnel.core.starter.utils.FileUtils;
 
 import org.apache.seatunnel.shade.com.typesafe.config.Config;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Path;
 
@@ -35,9 +36,8 @@ import java.nio.file.Path;
  * todo: do we need to move these class to a new module? since this may cause version conflict with the old flink version.
  * This command is used to execute the Flink job by SeaTunnel new API.
  */
+@Slf4j
 public class FlinkApiTaskExecuteCommand implements Command<FlinkCommandArgs> {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(FlinkApiTaskExecuteCommand.class);
 
     private final FlinkCommandArgs flinkCommandArgs;
 
@@ -48,7 +48,7 @@ public class FlinkApiTaskExecuteCommand implements Command<FlinkCommandArgs> {
     @Override
     public void execute() throws CommandExecuteException {
         Path configFile = FileUtils.getConfigPath(flinkCommandArgs);
-
+        checkConfigExist(configFile);
         Config config = new ConfigBuilder(configFile).getConfig();
         FlinkExecution seaTunnelTaskExecution = new FlinkExecution(config);
         try {

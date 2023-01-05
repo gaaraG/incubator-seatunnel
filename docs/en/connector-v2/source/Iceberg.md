@@ -11,35 +11,35 @@ Source connector for Apache Iceberg. It can support batch and stream mode.
 - [x] [batch](../../concept/connector-v2-features.md)
 - [x] [stream](../../concept/connector-v2-features.md)
 - [x] [exactly-once](../../concept/connector-v2-features.md)
-- [x] [schema projection](../../concept/connector-v2-features.md)
+- [x] [column projection](../../concept/connector-v2-features.md)
 - [x] [parallelism](../../concept/connector-v2-features.md)
 - [ ] [support user-defined split](../../concept/connector-v2-features.md)
-
 - [x] data format
     - [x] parquet
     - [x] orc
     - [x] avro
 - [x] iceberg catalog
-    - [x] hadoop(2.7.5)
-    - [x] hive(2.3.9)
+    - [x] hadoop(2.7.1 , 2.7.5 , 3.1.3)
+    - [x] hive(2.3.9 , 3.1.2)
 
 ##  Options
 
-| name                              | type     | required | default value           |
-|-----------------------------------|----------|----------|-------------------------|
-| catalog_name                      | string   | yes      | -                       |
-| catalog_type                      | string   | yes      | -                       |
-| uri                               | string   | false    | -                       |
-| warehouse                         | string   | yes      | -                       |
-| namespace                         | string   | yes      | -                       |
-| table                             | string   | yes      | -                       |
-| case_sensitive                    | boolean  | false    | false                   |
-| start_snapshot_timestamp          | long     | false    | -                       |
-| start_snapshot_id                 | long     | false    | -                       |
-| end_snapshot_id                   | long     | false    | -                       |
-| use_snapshot_id                   | long     | false    | -                       |
-| use_snapshot_timestamp            | long     | false    | -                       |
-| stream_scan_strategy              | enum     | false    | FROM_LATEST_SNAPSHOT    |
+| name                     | type    | required | default value        |
+| ------------------------ | ------- | -------- | -------------------- |
+| catalog_name             | string  | yes      | -                    |
+| catalog_type             | string  | yes      | -                    |
+| uri                      | string  | no       | -                    |
+| warehouse                | string  | yes      | -                    |
+| namespace                | string  | yes      | -                    |
+| table                    | string  | yes      | -                    |
+| case_sensitive           | boolean | no       | false                |
+| start_snapshot_timestamp | long    | no       | -                    |
+| start_snapshot_id        | long    | no       | -                    |
+| end_snapshot_id          | long    | no       | -                    |
+| use_snapshot_id          | long    | no       | -                    |
+| use_snapshot_timestamp   | long    | no       | -                    |
+| stream_scan_strategy     | enum    | no       | FROM_LATEST_SNAPSHOT |
+| common-options           |         | no       | -                    |
 
 ### catalog_name [string]
 
@@ -105,6 +105,10 @@ The optional values are:
 - FROM_SNAPSHOT_ID: Start incremental mode from a snapshot with a specific id inclusive.
 - FROM_SNAPSHOT_TIMESTAMP: Start incremental mode from a snapshot with a specific timestamp inclusive.
 
+### common options 
+
+Source plugin common parameters, please refer to [Source Common Options](common-options.md) for details.
+
 ## Example
 
 simple
@@ -135,7 +139,7 @@ source {
 }
 ```
 
-schema projection
+column projection
 
 ```hocon
 source {
@@ -155,3 +159,26 @@ source {
   }
 }
 ```
+
+:::tip
+
+In order to be compatible with different versions of Hadoop and Hive, the scope of hive-exec and flink-shaded-hadoop-2 in the project pom file are provided, so if you use the Flink engine, first you may need to add the following Jar packages to <FLINK_HOME>/lib directory, if you are using the Spark engine and integrated with Hadoop, then you do not need to add the following Jar packages.
+
+:::
+
+```
+flink-shaded-hadoop-x-xxx.jar
+hive-exec-xxx.jar
+libfb303-xxx.jar
+```
+Some versions of the hive-exec package do not have libfb303-xxx.jar, so you also need to manually import the Jar package. 
+
+## Changelog
+
+### 2.2.0-beta 2022-09-26
+
+- Add Iceberg Source Connector
+
+### next version
+
+- [Feature] Support Hadoop3.x ([3046](https://github.com/apache/incubator-seatunnel/pull/3046))

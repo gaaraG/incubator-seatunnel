@@ -16,20 +16,21 @@ Currently, only supports hudi cow table and Snapshot Query with Batch Mode
 
 - [ ] [stream](../../concept/connector-v2-features.md)
 - [x] [exactly-once](../../concept/connector-v2-features.md)
-- [ ] [schema projection](../../concept/connector-v2-features.md)
+- [ ] [column projection](../../concept/connector-v2-features.md)
 - [x] [parallelism](../../concept/connector-v2-features.md)
 - [ ] [support user-defined split](../../concept/connector-v2-features.md)
 
 ## Options
 
-| name                     | type    | required | default value |
-|--------------------------|---------|----------|---------------|
-| table.path               | string  | yes      | -             |
-| table.type               | string  | yes      | -             |
-| conf.files               | string  | yes      | -             |
-| use.kerberos             | boolean | no       | false         |
-| kerberos.principal       | string  | no       | -             |
-| kerberos.principal.file  | string  | no       | -             |
+| name                    | type    | required                     | default value |
+| ----------------------- |---------|------------------------------| ------------- |
+| table.path              | string  | yes                          | -             |
+| table.type              | string  | yes                          | -             |
+| conf.files              | string  | yes                          | -             |
+| use.kerberos            | boolean | no                           | false         |
+| kerberos.principal      | string  | yes when use.kerberos = true | -             |
+| kerberos.principal.file | string  | yes when use.kerberos = true | -             |
+| common-options          | config  | no                           | -             |
 
 ### table.path [string]
 
@@ -55,6 +56,10 @@ Currently, only supports hudi cow table and Snapshot Query with Batch Mode
 
 `kerberos.principal.file` When use kerberos,  we should set kerberos princal file such as '/home/test/test_user.keytab'.
 
+### common options 
+
+Source plugin common parameters, please refer to [Source Common Options](common-options.md) for details.
+
 ## Examples
 
 ```hocon
@@ -71,3 +76,9 @@ source {
 
 }
 ```
+
+## Changelog
+
+### 2.2.0-beta 2022-09-26
+
+- Add Hudi Source Connector

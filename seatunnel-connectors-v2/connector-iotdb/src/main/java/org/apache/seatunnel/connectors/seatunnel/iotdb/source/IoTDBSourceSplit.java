@@ -19,16 +19,19 @@ package org.apache.seatunnel.connectors.seatunnel.iotdb.source;
 
 import org.apache.seatunnel.api.source.SourceSplit;
 
+import lombok.ToString;
+
+@ToString
 public class IoTDBSourceSplit implements SourceSplit {
 
     private static final long serialVersionUID = -1L;
 
-    private String splitId;
+    private final String splitId;
 
     /**
      * final query statement
      */
-    private String query;
+    private final String query;
 
     @Override
     public String splitId() {

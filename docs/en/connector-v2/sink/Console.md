@@ -10,12 +10,17 @@ Used to send data to Console. Both support streaming and batch mode.
 ## Key features
 
 - [ ] [exactly-once](../../concept/connector-v2-features.md)
-- [ ] [schema projection](../../concept/connector-v2-features.md)
 
 ##  Options
 
-| name | type   | required | default value |
-| --- |--------|----------|---------------|
+| name            | type  | required | default value |
+| -------------  |--------|----------|---------------|
+| common-options |        | no       | -             |
+
+### common options
+
+Sink plugin common parameters, please refer to [Sink Common Options](common-options.md) for details
+
 ## Example
 
 simple:
@@ -48,12 +53,6 @@ source {
     }
 }
 
-transform {
-      sql {
-        sql = "select name, age from fake"
-      }
-}
-
 sink {
     Console {
 
@@ -78,3 +77,12 @@ row=7 : KIGOqnLhqe, 430165110
 row=8 : goMdjHlRpX, 288221239
 row=9 : VBtpiNGArV, 1906991577
 ```
+
+## Changelog
+
+### 2.2.0-beta 2022-09-26
+
+- Add Console Sink Connector
+
+### 2.3.0-beta 2022-10-20
+- [Improve] Console sink support print subtask index ([3000](https://github.com/apache/incubator-seatunnel/pull/3000))

@@ -17,23 +17,53 @@
 
 package org.apache.seatunnel.connectors.seatunnel.clickhouse.util;
 
+import org.apache.seatunnel.api.table.type.ArrayType;
 import org.apache.seatunnel.api.table.type.BasicType;
 import org.apache.seatunnel.api.table.type.DecimalType;
 import org.apache.seatunnel.api.table.type.LocalTimeType;
 import org.apache.seatunnel.api.table.type.MapType;
 import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.clickhouse.exception.ClickhouseConnectorException;
 
 import com.clickhouse.client.ClickHouseColumn;
 import com.clickhouse.client.ClickHouseValue;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.UUID;
 
 public class TypeConvertUtil {
 
     public static SeaTunnelDataType<?> convert(ClickHouseColumn column) {
+        if (column.isArray()) {
+            ClickHouseColumn subArrayDataType = column.getNestedColumns().get(0);
+            SeaTunnelDataType<?> dataType = convert(subArrayDataType);
+            if (BasicType.INT_TYPE.equals(dataType)) {
+                return ArrayType.INT_ARRAY_TYPE;
+            } else if (BasicType.STRING_TYPE.equals(dataType)) {
+                return ArrayType.STRING_ARRAY_TYPE;
+            } else if (BasicType.FLOAT_TYPE.equals(dataType)) {
+                return ArrayType.FLOAT_ARRAY_TYPE;
+            } else if (BasicType.DOUBLE_TYPE.equals(dataType)) {
+                return ArrayType.DOUBLE_ARRAY_TYPE;
+            } else if (BasicType.LONG_TYPE.equals(dataType)) {
+                return ArrayType.LONG_ARRAY_TYPE;
+            } else if (BasicType.SHORT_TYPE.equals(dataType)) {
+                return ArrayType.SHORT_ARRAY_TYPE;
+            } else if (BasicType.BOOLEAN_TYPE.equals(dataType)) {
+                return ArrayType.BOOLEAN_ARRAY_TYPE;
+            } else if (BasicType.BYTE_TYPE.equals(dataType)) {
+                return ArrayType.BYTE_ARRAY_TYPE;
+            } else {
+                throw new ClickhouseConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE, "data type in array is not supported: " + subArrayDataType.getDataType());
+            }
+        }
         Class<?> type = column.getDataType().getObjectClass();
         if (Integer.class.equals(type)) {
             return BasicType.INT_TYPE;
@@ -58,15 +88,24 @@ public class TypeConvertUtil {
         } else if (Double.class.equals(type)) {
             return BasicType.DOUBLE_TYPE;
         } else if (Map.class.equals(type)) {
-            return new MapType<>(BasicType.STRING_TYPE, BasicType.STRING_TYPE);
+            return new MapType<>(convert(column.getNestedColumns().get(0)), convert(column.getNestedColumns().get(1)));
+        } else if (UUID.class.equals(type)) {
+            return BasicType.STRING_TYPE;
+        } else if (Inet4Address.class.equals(type)) {
+            return BasicType.STRING_TYPE;
+        } else if (Inet6Address.class.equals(type)) {
+            return BasicType.STRING_TYPE;
+        } else if (Object.class.equals(type)) {
+            return BasicType.STRING_TYPE;
+        } else if (BigInteger.class.equals(type)) {
+            return BasicType.STRING_TYPE;
         } else {
             // TODO support pojo
-            throw new IllegalArgumentException("not supported data type: " + column.getDataType());
+            throw new ClickhouseConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE, "unsupported data type: " + column.getDataType());
         }
     }
 
     public static Object valueUnwrap(SeaTunnelDataType<?> dataType, ClickHouseValue record) {
-
         if (dataType instanceof DecimalType) {
             return record.asBigDecimal();
         } else if (dataType.equals(BasicType.BOOLEAN_TYPE)) {
@@ -91,9 +130,30 @@ public class TypeConvertUtil {
             return record.asDouble();
         } else if (dataType instanceof MapType) {
             return record.asMap();
+        } else if (dataType instanceof ArrayType) {
+            Class<?> typeClass = dataType.getTypeClass();
+            if (String[].class.equals(typeClass)) {
+                return record.asArray(String.class);
+            } else if (Boolean[].class.equals(typeClass)) {
+                return record.asArray(Boolean.class);
+            } else if (Byte[].class.equals(typeClass)) {
+                return record.asArray(Byte.class);
+            } else if (Short[].class.equals(typeClass)) {
+                return record.asArray(Short.class);
+            } else if (Integer[].class.equals(typeClass)) {
+                return record.asArray(Integer.class);
+            } else if (Long[].class.equals(typeClass)) {
+                return record.asArray(Long.class);
+            } else if (Float[].class.equals(typeClass)) {
+                return record.asArray(Float.class);
+            } else if (Double[].class.equals(typeClass)) {
+                return record.asArray(Double.class);
+            } else {
+                return record.asArray();
+            }
         } else {
             // TODO support pojo
-            throw new IllegalArgumentException("not supported data type: " + dataType);
+            throw new ClickhouseConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE, "unsupported data type: " + dataType);
         }
     }
 

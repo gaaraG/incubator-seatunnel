@@ -17,18 +17,25 @@
 
 package org.apache.seatunnel.connectors.seatunnel.kudu.source;
 
-import org.apache.seatunnel.api.common.PrepareFailException;
+import org.apache.seatunnel.api.common.SeaTunnelAPIErrorCode;
 import org.apache.seatunnel.api.serialization.DefaultSerializer;
 import org.apache.seatunnel.api.serialization.Serializer;
 import org.apache.seatunnel.api.source.Boundedness;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.source.SourceReader;
 import org.apache.seatunnel.api.source.SourceSplitEnumerator;
+import org.apache.seatunnel.api.source.SupportParallelism;
 import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
+import org.apache.seatunnel.common.config.CheckConfigUtil;
+import org.apache.seatunnel.common.config.CheckResult;
 import org.apache.seatunnel.common.constants.PluginType;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
+import org.apache.seatunnel.common.utils.ExceptionUtils;
 import org.apache.seatunnel.connectors.seatunnel.kudu.config.KuduSourceConfig;
+import org.apache.seatunnel.connectors.seatunnel.kudu.exception.KuduConnectorErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.kudu.exception.KuduConnectorException;
 import org.apache.seatunnel.connectors.seatunnel.kudu.kuduclient.KuduInputFormat;
 import org.apache.seatunnel.connectors.seatunnel.kudu.kuduclient.KuduTypeMapper;
 import org.apache.seatunnel.connectors.seatunnel.kudu.state.KuduSourceState;
@@ -36,22 +43,20 @@ import org.apache.seatunnel.connectors.seatunnel.kudu.state.KuduSourceState;
 import org.apache.seatunnel.shade.com.typesafe.config.Config;
 
 import com.google.auto.service.AutoService;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kudu.ColumnSchema;
 import org.apache.kudu.client.KuduClient;
 import org.apache.kudu.client.KuduException;
 import org.apache.kudu.client.KuduScanner;
 import org.apache.kudu.client.RowResult;
 import org.apache.kudu.client.RowResultIterator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @AutoService(SeaTunnelSource.class)
-public class KuduSource implements SeaTunnelSource<SeaTunnelRow, KuduSourceSplit, KuduSourceState> {
-    private static final Logger LOGGER = LoggerFactory.getLogger(KuduSource.class);
-
+public class KuduSource implements SeaTunnelSource<SeaTunnelRow, KuduSourceSplit, KuduSourceState>, SupportParallelism {
     private SeaTunnelRowType rowTypeInfo;
     private KuduInputFormat kuduInputFormat;
     private PartitionParameter partitionParameter;
@@ -85,7 +90,7 @@ public class KuduSource implements SeaTunnelSource<SeaTunnelRow, KuduSourceSplit
 
     @Override
     public SourceSplitEnumerator<KuduSourceSplit, KuduSourceState> restoreEnumerator(
-            SourceSplitEnumerator.Context<KuduSourceSplit> enumeratorContext, KuduSourceState checkpointState) {
+           SourceSplitEnumerator.Context<KuduSourceSplit> enumeratorContext, KuduSourceState checkpointState) {
         // todo:
         return new KuduSourceSplitEnumerator(enumeratorContext, partitionParameter);
     }
@@ -97,7 +102,7 @@ public class KuduSource implements SeaTunnelSource<SeaTunnelRow, KuduSourceSplit
 
     @Override
     public String getPluginName() {
-        return "KuduSource";
+        return "Kudu";
     }
 
     @Override
@@ -105,13 +110,16 @@ public class KuduSource implements SeaTunnelSource<SeaTunnelRow, KuduSourceSplit
         String kudumaster = "";
         String tableName = "";
         String columnslist = "";
-        if (config.hasPath(KuduSourceConfig.KUDUMASTER) && config.hasPath(KuduSourceConfig.KUDUMASTER) && config.hasPath(KuduSourceConfig.KUDUMASTER)) {
-            kudumaster = config.getString(KuduSourceConfig.KUDUMASTER);
-            tableName = config.getString(KuduSourceConfig.TABLENAME);
-            columnslist = config.getString(KuduSourceConfig.COLUMNSLIST);
+        CheckResult checkResult = CheckConfigUtil.checkAllExists(config, KuduSourceConfig.KUDU_MASTER.key(), KuduSourceConfig.TABLE_NAME.key(), KuduSourceConfig.COLUMNS_LIST.key());
+        if (checkResult.isSuccess()) {
+            kudumaster = config.getString(KuduSourceConfig.KUDU_MASTER.key());
+            tableName = config.getString(KuduSourceConfig.TABLE_NAME.key());
+            columnslist = config.getString(KuduSourceConfig.COLUMNS_LIST.key());
             kuduInputFormat = new KuduInputFormat(kudumaster, tableName, columnslist);
         } else {
-            throw new RuntimeException("Missing Source configuration parameters");
+            throw new KuduConnectorException(SeaTunnelAPIErrorCode.CONFIG_VALIDATION_FAILED,
+                    String.format("PluginName: %s, PluginType: %s, Message: %s",
+                            getPluginName(), PluginType.SINK, checkResult.getMsg()));
         }
         try {
             KuduClient.KuduClientBuilder kuduClientBuilder = new
@@ -123,7 +131,7 @@ public class KuduSource implements SeaTunnelSource<SeaTunnelRow, KuduSourceSplit
             SeaTunnelRowType seaTunnelRowType = getSeaTunnelRowType(kuduClient.openTable(tableName).getSchema().getColumns());
             rowTypeInfo = seaTunnelRowType;
         } catch (KuduException e) {
-            throw new RuntimeException("Parameters in the preparation phase fail to be generated", e);
+            throw new KuduConnectorException(KuduConnectorErrorCode.GENERATE_KUDU_PARAMETERS_FAILED, e);
         }
     }
 
@@ -160,7 +168,7 @@ public class KuduSource implements SeaTunnelSource<SeaTunnelRow, KuduSourceSplit
                 }
             }
         } catch (KuduException e) {
-            throw new RuntimeException("Failed to generate upper and lower limits for each partition", e);
+            throw new KuduConnectorException(KuduConnectorErrorCode.GENERATE_KUDU_PARAMETERS_FAILED, "Failed to generate upper and lower limits for each partition");
         }
         return new PartitionParameter(keyColumn, Long.parseLong(minKey + ""), Long.parseLong(maxKey + ""));
     }
@@ -176,9 +184,9 @@ public class KuduSource implements SeaTunnelSource<SeaTunnelRow, KuduSourceSplit
             }
 
         } catch (Exception e) {
-            LOGGER.warn("get row type info exception", e);
-            throw new PrepareFailException("kudu", PluginType.SOURCE, e.toString());
+            throw new KuduConnectorException(CommonErrorCode.TABLE_SCHEMA_GET_FAILED, String.format("PluginName: %s, PluginType: %s, Message: %s",
+                    "Kudu", PluginType.SOURCE, ExceptionUtils.getMessage(e)));
         }
-        return new SeaTunnelRowType(fieldNames.toArray(new String[fieldNames.size()]), seaTunnelDataTypes.toArray(new SeaTunnelDataType<?>[seaTunnelDataTypes.size()]));
+        return new SeaTunnelRowType(fieldNames.toArray(new String[0]), seaTunnelDataTypes.toArray(new SeaTunnelDataType<?>[0]));
     }
 }

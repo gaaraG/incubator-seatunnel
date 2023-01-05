@@ -119,7 +119,7 @@ public final class InternalRowConverter extends RowConverter<InternalRow> {
         return new SpecificInternalRow(values);
     }
 
-    private static Object convertMap(Map<?, ?> mapData, MapType<?, ?> mapType) {
+    private static ArrayBasedMapData convertMap(Map<?, ?> mapData, MapType<?, ?> mapType) {
         if (mapData == null || mapData.size() == 0) {
             return ArrayBasedMapData.apply(new Object[]{}, new Object[]{});
         }
@@ -132,7 +132,7 @@ public final class InternalRowConverter extends RowConverter<InternalRow> {
         return ArrayBasedMapData.apply(keys, values);
     }
 
-    private static Object reconvertMap(MapData mapData, MapType<?, ?> mapType) {
+    private static Map<Object, Object> reconvertMap(MapData mapData, MapType<?, ?> mapType) {
         if (mapData == null || mapData.numElements() == 0) {
             return Collections.emptyMap();
         }
@@ -182,7 +182,6 @@ public final class InternalRowConverter extends RowConverter<InternalRow> {
         if (field == null) {
             return null;
         }
-
         switch (dataType.getSqlType()) {
             case ROW:
                 return reconvert((InternalRow) field, (SeaTunnelRowType) dataType);
@@ -200,9 +199,7 @@ public final class InternalRowConverter extends RowConverter<InternalRow> {
             case DECIMAL:
                 return ((Decimal) field).toJavaBigDecimal();
             case ARRAY:
-                ArrayData arrayData = (ArrayData) field;
-                BasicType<?> elementType = ((ArrayType<?, ?>) dataType).getElementType();
-                return arrayData.toObjectArray(TypeConverterUtils.convert(elementType));
+                return reconvertArray((ArrayData) field, (ArrayType<?, ?>) dataType);
             default:
                 return field;
         }
@@ -215,5 +212,17 @@ public final class InternalRowConverter extends RowConverter<InternalRow> {
                 rowType.getFieldType(i));
         }
         return new SeaTunnelRow(fields);
+    }
+
+    private static Object reconvertArray(ArrayData arrayData, ArrayType<?, ?> arrayType) {
+        if (arrayData == null || arrayData.numElements() == 0) {
+            return Collections.emptyList().toArray();
+        }
+        Object[] newArray = new Object[arrayData.numElements()];
+        Object[] values = arrayData.toObjectArray(TypeConverterUtils.convert(arrayType.getElementType()));
+        for (int i = 0; i < arrayData.numElements(); i++) {
+            newArray[i] = reconvert(values[i], arrayType.getElementType());
+        }
+        return newArray;
     }
 }

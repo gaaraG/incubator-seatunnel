@@ -20,8 +20,7 @@ package org.apache.seatunnel.connectors.seatunnel.file.sink.commit;
 import org.apache.seatunnel.api.sink.SinkAggregatedCommitter;
 import org.apache.seatunnel.connectors.seatunnel.file.sink.util.FileSystemUtils;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -29,8 +28,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 public class FileSinkAggregatedCommitter implements SinkAggregatedCommitter<FileCommitInfo, FileAggregatedCommitInfo> {
-    private static final Logger LOGGER = LoggerFactory.getLogger(FileSinkAggregatedCommitter.class);
+    protected final FileSystemUtils fileSystemUtils;
+
+    public FileSinkAggregatedCommitter(FileSystemUtils fileSystemUtils) {
+        this.fileSystemUtils = fileSystemUtils;
+    }
 
     @Override
     public List<FileAggregatedCommitInfo> commit(List<FileAggregatedCommitInfo> aggregatedCommitInfos) throws IOException {
@@ -40,13 +44,13 @@ public class FileSinkAggregatedCommitter implements SinkAggregatedCommitter<File
                 for (Map.Entry<String, Map<String, String>> entry : aggregatedCommitInfo.getTransactionMap().entrySet()) {
                     for (Map.Entry<String, String> mvFileEntry : entry.getValue().entrySet()) {
                         // first rename temp file
-                        FileSystemUtils.renameFile(mvFileEntry.getKey(), mvFileEntry.getValue(), true);
+                        fileSystemUtils.renameFile(mvFileEntry.getKey(), mvFileEntry.getValue(), true);
                     }
                     // second delete transaction directory
-                    FileSystemUtils.deleteFile(entry.getKey());
+                    fileSystemUtils.deleteFile(entry.getKey());
                 }
             } catch (Exception e) {
-                LOGGER.error("commit aggregatedCommitInfo error ", e);
+                log.error("commit aggregatedCommitInfo error, aggregatedCommitInfo = {} ", aggregatedCommitInfo, e);
                 errorAggregatedCommitInfoList.add(aggregatedCommitInfo);
             }
         });
@@ -84,6 +88,7 @@ public class FileSinkAggregatedCommitter implements SinkAggregatedCommitter<File
      */
     @Override
     public void abort(List<FileAggregatedCommitInfo> aggregatedCommitInfos) throws Exception {
+        log.info("rollback aggregate commit");
         if (aggregatedCommitInfos == null || aggregatedCommitInfos.size() == 0) {
             return;
         }
@@ -92,15 +97,15 @@ public class FileSinkAggregatedCommitter implements SinkAggregatedCommitter<File
                 for (Map.Entry<String, Map<String, String>> entry : aggregatedCommitInfo.getTransactionMap().entrySet()) {
                     // rollback the file
                     for (Map.Entry<String, String> mvFileEntry : entry.getValue().entrySet()) {
-                        if (FileSystemUtils.fileExist(mvFileEntry.getValue()) && !FileSystemUtils.fileExist(mvFileEntry.getKey())) {
-                            FileSystemUtils.renameFile(mvFileEntry.getValue(), mvFileEntry.getKey(), true);
+                        if (fileSystemUtils.fileExist(mvFileEntry.getValue()) && !fileSystemUtils.fileExist(mvFileEntry.getKey())) {
+                            fileSystemUtils.renameFile(mvFileEntry.getValue(), mvFileEntry.getKey(), true);
                         }
                     }
                     // delete the transaction dir
-                    FileSystemUtils.deleteFile(entry.getKey());
+                    fileSystemUtils.deleteFile(entry.getKey());
                 }
             } catch (Exception e) {
-                LOGGER.error("abort aggregatedCommitInfo error ", e);
+                log.error("abort aggregatedCommitInfo error ", e);
             }
         });
     }

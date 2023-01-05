@@ -17,11 +17,13 @@
 
 package org.apache.seatunnel.connectors.seatunnel.kafka.source;
 
+import org.apache.seatunnel.api.serialization.DeserializationSchema;
 import org.apache.seatunnel.api.source.Boundedness;
 import org.apache.seatunnel.api.source.Collector;
 import org.apache.seatunnel.api.source.SourceReader;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
-import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
+import org.apache.seatunnel.connectors.seatunnel.kafka.exception.KafkaConnectorErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.kafka.exception.KafkaConnectorException;
 
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -31,8 +33,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -43,9 +43,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -54,29 +54,30 @@ public class KafkaSourceReader implements SourceReader<SeaTunnelRow, KafkaSource
     private static final long THREAD_WAIT_TIME = 500L;
     private static final long POLL_TIMEOUT = 10000L;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(KafkaSourceReader.class);
-
     private final SourceReader.Context context;
     private final ConsumerMetadata metadata;
     private final Set<KafkaSourceSplit> sourceSplits;
     private final Map<Long, Map<TopicPartition, Long>> checkpointOffsetMap;
-    private final ConcurrentMap<TopicPartition, KafkaSourceSplit> sourceSplitMap;
     private final Map<TopicPartition, KafkaConsumerThread> consumerThreadMap;
     private final ExecutorService executorService;
-    // TODO support user custom type
-    private SeaTunnelRowType typeInfo;
+    private final DeserializationSchema<SeaTunnelRow> deserializationSchema;
 
-    KafkaSourceReader(ConsumerMetadata metadata, SeaTunnelRowType typeInfo,
+    private final LinkedBlockingQueue<KafkaSourceSplit> pendingPartitionsQueue;
+
+    private volatile boolean running = false;
+
+    KafkaSourceReader(ConsumerMetadata metadata,
+                      DeserializationSchema<SeaTunnelRow> deserializationSchema,
                       SourceReader.Context context) {
         this.metadata = metadata;
         this.context = context;
-        this.typeInfo = typeInfo;
         this.sourceSplits = new HashSet<>();
+        this.deserializationSchema = deserializationSchema;
         this.consumerThreadMap = new ConcurrentHashMap<>();
-        this.sourceSplitMap = new ConcurrentHashMap<>();
         this.checkpointOffsetMap = new ConcurrentHashMap<>();
         this.executorService = Executors.newCachedThreadPool(
             r -> new Thread(r, "Kafka Source Data Consumer"));
+        pendingPartitionsQueue = new LinkedBlockingQueue<>();
     }
 
     @Override
@@ -92,9 +93,13 @@ public class KafkaSourceReader implements SourceReader<SeaTunnelRow, KafkaSource
 
     @Override
     public void pollNext(Collector<SeaTunnelRow> output) throws Exception {
-        if (sourceSplitMap.isEmpty()) {
+        if (!running) {
             Thread.sleep(THREAD_WAIT_TIME);
             return;
+        }
+
+        while (pendingPartitionsQueue.size() != 0) {
+            sourceSplits.add(pendingPartitionsQueue.poll());
         }
         sourceSplits.forEach(sourceSplit -> consumerThreadMap.computeIfAbsent(sourceSplit.getTopicPartition(), s -> {
             KafkaConsumerThread thread = new KafkaConsumerThread(metadata);
@@ -118,9 +123,7 @@ public class KafkaSourceReader implements SourceReader<SeaTunnelRow, KafkaSource
                             List<ConsumerRecord<byte[], byte[]>> recordList = records.records(partition);
                             for (ConsumerRecord<byte[], byte[]> record : recordList) {
 
-                                String v = stringDeserializer.deserialize(partition.topic(), record.value());
-                                String t = partition.topic();
-                                output.collect(new SeaTunnelRow(new Object[]{t, v}));
+                                deserializationSchema.deserialize(record.value(), output);
 
                                 if (Boundedness.BOUNDED.equals(context.getBoundedness()) &&
                                     record.offset() >= sourceSplit.getEndOffset()) {
@@ -143,7 +146,7 @@ public class KafkaSourceReader implements SourceReader<SeaTunnelRow, KafkaSource
                     completableFuture.complete(null);
                 });
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                throw new KafkaConnectorException(KafkaConnectorErrorCode.CONSUME_DATA_FAILED, e);
             }
             completableFuture.join();
         });
@@ -163,15 +166,19 @@ public class KafkaSourceReader implements SourceReader<SeaTunnelRow, KafkaSource
 
     @Override
     public void addSplits(List<KafkaSourceSplit> splits) {
-        sourceSplits.addAll(splits);
-        sourceSplits.forEach(split -> {
-            sourceSplitMap.put(split.getTopicPartition(), split);
+        running = true;
+        splits.forEach(s -> {
+            try {
+                pendingPartitionsQueue.put(s);
+            } catch (InterruptedException e) {
+                throw new KafkaConnectorException(KafkaConnectorErrorCode.ADD_SPLIT_CHECKPOINT_FAILED, e);
+            }
         });
     }
 
     @Override
     public void handleNoMoreSplits() {
-        LOGGER.info("receive no more splits message, this reader will not add new split.");
+        log.info("receive no more splits message, this reader will not add new split.");
     }
 
     @Override

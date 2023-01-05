@@ -19,23 +19,25 @@ package org.apache.seatunnel.core.starter.spark.execution;
 
 import org.apache.seatunnel.api.common.JobContext;
 import org.apache.seatunnel.common.Constants;
+import org.apache.seatunnel.common.config.TypesafeConfigUtils;
 import org.apache.seatunnel.core.starter.exception.TaskExecuteException;
+import org.apache.seatunnel.core.starter.execution.TaskExecution;
 import org.apache.seatunnel.core.starter.spark.config.SparkEnvironmentFactory;
 import org.apache.seatunnel.spark.SparkEnvironment;
 
 import org.apache.seatunnel.shade.com.typesafe.config.Config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-public class SparkExecution {
+@Slf4j
+public class SparkExecution implements TaskExecution {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(SparkExecution.class);
     private final SparkEnvironment sparkEnvironment;
     private final PluginExecuteProcessor sourcePluginExecuteProcessor;
     private final PluginExecuteProcessor transformPluginExecuteProcessor;
@@ -46,16 +48,18 @@ public class SparkExecution {
         JobContext jobContext = new JobContext();
         jobContext.setJobMode(sparkEnvironment.getJobMode());
         this.sourcePluginExecuteProcessor = new SourceExecuteProcessor(sparkEnvironment, jobContext, config.getConfigList(Constants.SOURCE));
-        this.transformPluginExecuteProcessor = new TransformExecuteProcessor(sparkEnvironment, jobContext, config.getConfigList(Constants.TRANSFORM));
+        this.transformPluginExecuteProcessor = new TransformExecuteProcessor(sparkEnvironment, jobContext,
+            TypesafeConfigUtils.getConfigList(config, Constants.TRANSFORM, Collections.emptyList()));
         this.sinkPluginExecuteProcessor = new SinkExecuteProcessor(sparkEnvironment, jobContext, config.getConfigList(Constants.SINK));
     }
 
+    @Override
     public void execute() throws TaskExecuteException {
         List<Dataset<Row>> datasets = new ArrayList<>();
         datasets = sourcePluginExecuteProcessor.execute(datasets);
         datasets = transformPluginExecuteProcessor.execute(datasets);
         sinkPluginExecuteProcessor.execute(datasets);
 
-        LOGGER.info("Spark Execution started");
+        log.info("Spark Execution started");
     }
 }

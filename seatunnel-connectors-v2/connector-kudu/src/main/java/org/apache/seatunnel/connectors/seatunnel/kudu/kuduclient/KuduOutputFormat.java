@@ -18,8 +18,12 @@
 package org.apache.seatunnel.connectors.seatunnel.kudu.kuduclient;
 
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
 import org.apache.seatunnel.connectors.seatunnel.kudu.config.KuduSinkConfig;
+import org.apache.seatunnel.connectors.seatunnel.kudu.exception.KuduConnectorErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.kudu.exception.KuduConnectorException;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kudu.ColumnSchema;
 import org.apache.kudu.Schema;
 import org.apache.kudu.client.Insert;
@@ -29,8 +33,7 @@ import org.apache.kudu.client.KuduSession;
 import org.apache.kudu.client.KuduTable;
 import org.apache.kudu.client.PartialRow;
 import org.apache.kudu.client.SessionConfiguration;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.kudu.client.Upsert;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -40,31 +43,29 @@ import java.sql.Timestamp;
 /**
  * A Kudu outputFormat
  */
+@Slf4j
 public class KuduOutputFormat
         implements Serializable {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(KuduOutputFormat.class);
+    public static final long TIMEOUTMS = 18000;
+    public static final long SESSIONTIMEOUTMS = 100000;
 
-    private String kuduMaster;
-    private String kuduTableName;
+    private final String kuduMaster;
+    private final String kuduTableName;
+    private final KuduSinkConfig.SaveMode saveMode;
     private KuduClient kuduClient;
     private KuduSession kuduSession;
     private KuduTable kuduTable;
-    public static final long TIMEOUTMS = 18000;
-    public static final long SESSIONTIMEOUTMS = 100000;
+
     public KuduOutputFormat(KuduSinkConfig kuduSinkConfig) {
         this.kuduMaster = kuduSinkConfig.getKuduMaster();
         this.kuduTableName = kuduSinkConfig.getKuduTableName();
+        this.saveMode = kuduSinkConfig.getSaveMode();
         init();
     }
 
-    public void write(SeaTunnelRow element) {
-
-        Insert insert = kuduTable.newInsert();
-        Schema schema = kuduTable.getSchema();
-
+    private void transform(PartialRow row, SeaTunnelRow element, Schema schema) {
         int columnCount = schema.getColumnCount();
-        PartialRow row = insert.getRow();
         for (int columnIndex = 0; columnIndex < columnCount; columnIndex++) {
             ColumnSchema col = schema.getColumnByIndex(columnIndex);
             try {
@@ -111,27 +112,55 @@ public class KuduOutputFormat
                         row.addDecimal(columnIndex, (BigDecimal) element.getField(columnIndex));
                         break;
                     default:
-                        throw new IllegalArgumentException("Unsupported column type: " + col.getType());
+                        throw new KuduConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE, "Unsupported column type: " + col.getType());
                 }
             } catch (ClassCastException e) {
-                e.printStackTrace();
-                throw new IllegalArgumentException(
+                throw new KuduConnectorException(KuduConnectorErrorCode.DATA_TYPE_CAST_FILED,
                         "Value type does not match column type " + col.getType() +
                                 " for column " + col.getName());
             }
 
         }
+    }
 
+    private void upsert(SeaTunnelRow element) {
+        Upsert upsert = kuduTable.newUpsert();
+        Schema schema = kuduTable.getSchema();
+        PartialRow row = upsert.getRow();
+        transform(row, element, schema);
+        try {
+            kuduSession.apply(upsert);
+        } catch (KuduException e) {
+            throw new KuduConnectorException(KuduConnectorErrorCode.KUDU_UPSERT_FAILED, e);
+        }
+    }
+
+    private void insert(SeaTunnelRow element) {
+        Insert insert = kuduTable.newInsert();
+        Schema schema = kuduTable.getSchema();
+        PartialRow row = insert.getRow();
+        transform(row, element, schema);
         try {
             kuduSession.apply(insert);
         } catch (KuduException e) {
-            LOGGER.warn("kudu session insert data fail.", e);
-            throw new RuntimeException("kudu session insert data fail.", e);
+            throw new KuduConnectorException(KuduConnectorErrorCode.KUDU_INSERT_FAILED, e);
         }
-
     }
 
-    public void init() {
+    public void write(SeaTunnelRow element) {
+        switch (saveMode) {
+            case APPEND:
+                insert(element);
+                break;
+            case OVERWRITE:
+                upsert(element);
+                break;
+            default:
+                throw new KuduConnectorException(CommonErrorCode.FLUSH_DATA_FAILED, String.format("Unsupported saveMode: %s.", saveMode.name()));
+        }
+    }
+
+    private void init() {
         KuduClient.KuduClientBuilder kuduClientBuilder = new
                 KuduClient.KuduClientBuilder(kuduMaster);
         kuduClientBuilder.defaultOperationTimeoutMs(TIMEOUTMS);
@@ -142,10 +171,9 @@ public class KuduOutputFormat
         try {
             kuduTable = kuduClient.openTable(kuduTableName);
         } catch (KuduException e) {
-            LOGGER.warn("Failed to initialize the Kudu client.", e);
-            throw new RuntimeException("Failed to initialize the Kudu client.", e);
+            throw new KuduConnectorException(KuduConnectorErrorCode.INIT_KUDU_CLIENT_FAILED, e);
         }
-        LOGGER.info("The Kudu client is successfully initialized", kuduMaster, kuduClient);
+        log.info("The Kudu client for Master: {} is initialized successfully.", kuduMaster);
     }
 
     public void closeOutputFormat() {
@@ -153,8 +181,8 @@ public class KuduOutputFormat
             try {
                 kuduClient.close();
                 kuduSession.close();
-            } catch (KuduException e) {
-                LOGGER.warn("Kudu Client close failed.", e);
+            } catch (KuduException ignored) {
+                log.warn("Failed to close Kudu Client.", ignored);
             } finally {
                 kuduClient = null;
                 kuduSession = null;

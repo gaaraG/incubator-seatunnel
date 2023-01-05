@@ -18,7 +18,9 @@
 package org.apache.seatunnel.core.starter.spark.execution;
 
 import org.apache.seatunnel.api.common.JobContext;
+import org.apache.seatunnel.api.env.EnvCommonOptions;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
+import org.apache.seatunnel.api.source.SourceCommonOptions;
 import org.apache.seatunnel.common.Constants;
 import org.apache.seatunnel.common.utils.SerializationUtils;
 import org.apache.seatunnel.plugin.discovery.PluginIdentifier;
@@ -54,9 +56,17 @@ public class SourceExecuteProcessor extends AbstractPluginExecuteProcessor<SeaTu
         List<Dataset<Row>> sources = new ArrayList<>();
         for (int i = 0; i < plugins.size(); i++) {
             SeaTunnelSource<?, ?, ?> source = plugins.get(i);
+            Config pluginConfig = pluginConfigs.get(i);
+            int parallelism;
+            if (pluginConfig.hasPath(SourceCommonOptions.PARALLELISM.key())) {
+                parallelism = pluginConfig.getInt(SourceCommonOptions.PARALLELISM.key());
+            } else {
+                parallelism = sparkEnvironment.getSparkConf().getInt(EnvCommonOptions.PARALLELISM.key(), EnvCommonOptions.PARALLELISM.defaultValue());
+            }
             Dataset<Row> dataset = sparkEnvironment.getSparkSession()
                 .read()
                 .format(SeaTunnelSource.class.getSimpleName())
+                .option(SourceCommonOptions.PARALLELISM.key(), parallelism)
                 .option(Constants.SOURCE_SERIALIZATION, SerializationUtils.objectToString(source))
                 .schema((StructType) TypeConverterUtils.convert(source.getProducedType())).load();
             sources.add(dataset);

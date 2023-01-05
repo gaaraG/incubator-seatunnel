@@ -7,8 +7,6 @@ Write message to Sentry.
 ## Key features
 
 - [ ] [exactly-once](../../concept/connector-v2-features.md)
-- [ ] [schema projection](../../concept/connector-v2-features.md)
-
 
 ## Options
 
@@ -18,10 +16,12 @@ Write message to Sentry.
 | env                        | string  | no       | -             |
 | release                    | string  | no       | -             |
 | cacheDirPath               | string  | no       | -             |
-| enableExternalConfiguration | boolean | no       | -             |
+| enableExternalConfiguration| boolean | no       | -             |
 | maxCacheItems              | number  | no       | -             |
 | flushTimeoutMills          | number  | no       | -             |
 | maxQueueSize               | number  | no       | -             |
+| common-options             |         | no       | -             |
+
 ### dsn [string]
 
 The DSN tells the SDK where to send the events to.
@@ -47,6 +47,10 @@ Controls how many seconds to wait before flushing down. Sentry SDKs cache events
 ### maxQueueSize [number]
 Max queue size before flushing events/envelopes to the disk
 
+### common options
+
+Sink plugin common parameters, please refer to [Sink Common Options](common-options.md) for details
+
 ## Example
 ```
   Sentry {
@@ -57,3 +61,9 @@ Max queue size before flushing events/envelopes to the disk
   }
 
 ```
+
+## Changelog
+
+### 2.2.0-beta 2022-09-26
+
+- Add Sentry Sink Connector

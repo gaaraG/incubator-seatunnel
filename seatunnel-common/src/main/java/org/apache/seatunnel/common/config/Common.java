@@ -19,14 +19,19 @@ package org.apache.seatunnel.common.config;
 
 import static java.nio.file.FileVisitOption.FOLLOW_LINKS;
 
+import org.apache.commons.lang3.StringUtils;
+
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -40,6 +45,8 @@ public class Common {
      * Used to set the size when create a new collection(just to pass the checkstyle).
      */
     public static final int COLLECTION_SIZE = 16;
+
+    private static final int APP_LIB_DIR_DEPTH = 2;
 
     private static final int PLUGIN_LIB_DIR_DEPTH = 3;
 
@@ -85,8 +92,8 @@ public class Common {
         }
     }
 
-    public static Path appLibDir() {
-        return appRootDir().resolve("lib");
+    public static Path appStarterDir() {
+        return appRootDir().resolve("starter");
     }
 
     /**
@@ -107,14 +114,64 @@ public class Common {
      * Plugin Connector Jar Dir
      */
     public static Path connectorJarDir(String engine) {
-        return Paths.get(appRootDir().toString(), "connectors", engine.toLowerCase());
+        String seatunnelHome = System.getProperty("SEATUNNEL_HOME");
+        if (StringUtils.isBlank(seatunnelHome)) {
+            return Paths.get(appRootDir().toString(), "connectors", engine.toLowerCase());
+        } else {
+            return Paths.get(seatunnelHome, "connectors", engine.toLowerCase());
+        }
     }
 
     /**
      * Plugin Connector Dir
      */
     public static Path connectorDir() {
-        return Paths.get(appRootDir().toString(), "connectors");
+        String seatunnelHome = System.getProperty("SEATUNNEL_HOME");
+        if (StringUtils.isBlank(seatunnelHome)) {
+            return Paths.get(appRootDir().toString(), "connectors");
+        } else {
+            return Paths.get(seatunnelHome, "connectors");
+        }
+    }
+
+    /**
+     * lib Dir
+     */
+    public static Path libDir() {
+        String seatunnelHome = System.getProperty("SEATUNNEL_HOME");
+        if (StringUtils.isBlank(seatunnelHome)) {
+            seatunnelHome = appRootDir().toString();
+        }
+        return Paths.get(seatunnelHome, "lib");
+    }
+
+    /**
+     * return lib jars, which located in 'lib/*' or 'lib/{dir}/*'.
+     */
+    public static List<Path> getLibJars() {
+        Path libRootDir = Common.libDir();
+        if (!Files.exists(libRootDir) || !Files.isDirectory(libRootDir)) {
+            return Collections.emptyList();
+        }
+        try (Stream<Path> stream = Files.walk(libRootDir, APP_LIB_DIR_DEPTH, FOLLOW_LINKS)) {
+            return stream
+                .filter(it -> !it.toFile().isDirectory())
+                .filter(it -> it.getFileName().toString().endsWith(".jar"))
+                .collect(Collectors.toList());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * return the jar package configured in env jars
+     */
+    public static Set<Path> getThirdPartyJars(String paths) {
+
+        return Arrays.stream(paths.split(";"))
+            .filter(s -> !"".equals(s))
+            .filter(it -> it.endsWith(".jar"))
+            .map(path -> Paths.get(URI.create(path))).collect(Collectors.toSet());
     }
 
     public static Path pluginTarball() {
