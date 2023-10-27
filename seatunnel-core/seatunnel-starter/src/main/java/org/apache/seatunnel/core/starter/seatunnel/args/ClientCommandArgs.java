@@ -21,6 +21,8 @@ import org.apache.seatunnel.common.config.Common;
 import org.apache.seatunnel.common.config.DeployMode;
 import org.apache.seatunnel.core.starter.command.AbstractCommandArgs;
 import org.apache.seatunnel.core.starter.command.Command;
+import org.apache.seatunnel.core.starter.command.ConfDecryptCommand;
+import org.apache.seatunnel.core.starter.command.ConfEncryptCommand;
 import org.apache.seatunnel.core.starter.enums.MasterType;
 import org.apache.seatunnel.core.starter.seatunnel.command.ClientExecuteCommand;
 import org.apache.seatunnel.core.starter.seatunnel.command.SeaTunnelConfValidateCommand;
@@ -35,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @EqualsAndHashCode(callSuper = true)
 @Data
@@ -59,7 +62,7 @@ public class ClientCommandArgs extends AbstractCommandArgs {
     @Parameter(
             names = {"-cn", "--cluster"},
             description = "The name of cluster")
-    private String clusterName = "seatunnel_default_cluster";
+    private String clusterName;
 
     @Parameter(
             names = {"-j", "--job-id"},
@@ -77,9 +80,20 @@ public class ClientCommandArgs extends AbstractCommandArgs {
     private String metricsJobId;
 
     @Parameter(
+            names = {"--get_running_job_metrics"},
+            description = "Gets metrics for running jobs")
+    private boolean getRunningJobMetrics = false;
+
+    @Parameter(
             names = {"-l", "--list"},
             description = "list job status")
     private boolean listJob = false;
+
+    @Parameter(
+            names = {"--async"},
+            description =
+                    "Run the job asynchronously, when the job is submitted, the client will exit")
+    private boolean async = false;
 
     @Parameter(
             names = {"-cj", "--close-job"},
@@ -89,10 +103,26 @@ public class ClientCommandArgs extends AbstractCommandArgs {
     @Override
     public Command<?> buildCommand() {
         Common.setDeployMode(getDeployMode());
+        userParamsToSysEnv();
         if (checkConfig) {
             return new SeaTunnelConfValidateCommand(this);
-        } else {
-            return new ClientExecuteCommand(this);
+        }
+        if (encrypt) {
+            return new ConfEncryptCommand(this);
+        }
+        if (decrypt) {
+            return new ConfDecryptCommand(this);
+        }
+        return new ClientExecuteCommand(this);
+    }
+
+    private void userParamsToSysEnv() {
+        if (!this.variables.isEmpty()) {
+            variables.stream()
+                    .filter(Objects::nonNull)
+                    .map(variable -> variable.split("=", 2))
+                    .filter(pair -> pair.length == 2)
+                    .forEach(pair -> System.setProperty(pair[0], pair[1]));
         }
     }
 
@@ -128,7 +158,7 @@ public class ClientCommandArgs extends AbstractCommandArgs {
             if (name.equals("-e") || name.equals("--deploy-mode")) {
                 log.warn(
                         "\n******************************************************************************************"
-                                + "\n-e and --deploy-mode will be deprecated in 2.3.1, please use -m and --master instead of it"
+                                + "\n-e and --deploy-mode deprecated in 2.3.1, please use -m and --master instead of it"
                                 + "\n******************************************************************************************");
             }
         }

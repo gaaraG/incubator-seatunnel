@@ -38,6 +38,7 @@
             you need to open this annotation and change the dependency of config-shade to project.
             <module>seatunnel-config</module>
         -->
+        <module>seatunnel-config</module>
         <module>seatunnel-common</module>
         <module>seatunnel-core</module>
         <module>seatunnel-transforms-v2</module>
@@ -54,7 +55,7 @@
 
     <properties>
         <!--todo The classification is too confusing, reclassify by type-->
-        <revision>2.3.1-SNAPSHOT</revision>
+        <revision>2.3.4-SNAPSHOT</revision>
         <seatunnel.config.shade.version>2.1.1</seatunnel.config.shade.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>1.8</java.version>
@@ -113,7 +114,8 @@
         <docker.hub>apache</docker.hub>
         <docker.tag>${project.version}</docker.tag>
         <jcommander.version>1.81</jcommander.version>
-        <junit.version>5.9.0</junit.version>
+        <junit4.version>4.13.2</junit4.version>
+        <junit5.version>5.9.0</junit5.version>
         <config.version>1.3.3</config.version>
         <maven-shade-plugin.version>3.3.0</maven-shade-plugin.version>
         <maven-helper-plugin.version>3.2.0</maven-helper-plugin.version>
@@ -124,7 +126,7 @@
         <maven-dependency-plugin.version>3.1.1</maven-dependency-plugin.version>
         <p3c-pmd.version>1.3.0</p3c-pmd.version>
         <maven-scm-provider-jgit.version>1.9.5</maven-scm-provider-jgit.version>
-        <testcontainer.version>1.17.3</testcontainer.version>
+        <testcontainer.version>1.17.6</testcontainer.version>
         <spotless.version>2.29.0</spotless.version>
         <jsqlparser.version>4.5</jsqlparser.version>
         <!-- Option args -->
@@ -139,6 +141,8 @@
         <checker.qual.version>3.10.0</checker.qual.version>
         <awaitility.version>4.2.0</awaitility.version>
         <e2e.dependency.skip>true</e2e.dependency.skip>
+        <skip.spotless>false</skip.spotless>
+
     </properties>
 
     <dependencyManagement>
@@ -284,7 +288,7 @@
             <dependency>
                 <groupId>org.apache.seatunnel</groupId>
                 <artifactId>seatunnel-config-shade</artifactId>
-                <version>${seatunnel.config.shade.version}</version>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>commons-codec</groupId>
@@ -335,9 +339,15 @@
             <dependency>
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>
-                <version>${junit.version}</version>
+                <version>${junit5.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>${junit4.version}</version>
             </dependency>
 
             <dependency>
@@ -446,7 +456,6 @@
             </dependency>
 
         </dependencies>
-
     </dependencyManagement>
 
     <dependencies>
@@ -766,7 +775,11 @@
                 <artifactId>spotless-maven-plugin</artifactId>
                 <version>${spotless.version}</version>
                 <configuration>
+                    <skip>${skip.spotless}</skip>
                     <java>
+                        <excludes>
+                            <exclude>src/main/java/org/apache/seatunnel/antlr4/generated/*.*</exclude>
+                        </excludes>
                         <googleJavaFormat>
                             <version>1.7</version>
                             <style>AOSP</style>
@@ -827,17 +840,18 @@
                 </configuration>
                 <executions>
                     <execution>
+                        <id>spotless-check</id>
                         <goals>
                             <goal>check</goal>
                         </goals>
-                        <phase>compile</phase>
+                        <phase>validate</phase>
                     </execution>
                 </executions>
             </plugin>
         </plugins>
     </build>
 
-    <url>https://github.com/apache/incubator-seatunnel</url>
+    <url>https://github.com/apache/seatunnel</url>
 
     <licenses>
         <license>
@@ -862,15 +876,15 @@
     </mailingLists>
 
     <scm>
-        <connection>scm:git:https://github.com/apache/incubator-seatunnel.git</connection>
-        <developerConnection>scm:git:https://github.com/apache/incubator-seatunnel.git</developerConnection>
-        <url>https://github.com/apache/incubator-seatunnel</url>
+        <connection>scm:git:https://github.com/apache/seatunnel.git</connection>
+        <developerConnection>scm:git:https://github.com/apache/seatunnel.git</developerConnection>
+        <url>https://github.com/apache/seatunnel</url>
         <tag>HEAD</tag>
     </scm>
 
     <issueManagement>
         <system>GitHub</system>
-        <url>https://github.com/apache/incubator-seatunnel/issues</url>
+        <url>https://github.com/apache/seatunnel/issues</url>
     </issueManagement>
 
     <profiles>

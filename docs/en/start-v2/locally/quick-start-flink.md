@@ -28,20 +28,33 @@ env {
 }
 
 source {
-    FakeSource {
-      result_table_name = "fake"
-      row.num = 16
-      schema = {
-        fields {
-          name = "string"
-          age = "int"
-        }
+  FakeSource {
+    result_table_name = "fake"
+    row.num = 16
+    schema = {
+      fields {
+        name = "string"
+        age = "int"
       }
     }
+  }
+}
+
+transform {
+  FieldMapper {
+    source_table_name = "fake"
+    result_table_name = "fake1"
+    field_mapper = {
+      age = age
+      name = new_name
+    }
+  }
 }
 
 sink {
-  Console {}
+  Console {
+    source_table_name = "fake1"
+  }
 }
 
 ```
@@ -55,14 +68,14 @@ You could start the application by the following commands
 flink version between `1.12.x` and `1.14.x`
 
 ```shell
-cd "apache-seatunnel-incubating-${version}"
+cd "apache-seatunnel-${version}"
 ./bin/start-seatunnel-flink-13-connector-v2.sh --config ./config/v2.streaming.conf.template
 ```
 
 flink version between `1.15.x` and `1.16.x`
 
 ```shell
-cd "apache-seatunnel-incubating-${version}"
+cd "apache-seatunnel-${version}"
 ./bin/start-seatunnel-flink-15-connector-v2.sh --config ./config/v2.streaming.conf.template
 ```
 

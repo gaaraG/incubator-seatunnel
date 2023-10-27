@@ -17,46 +17,75 @@
 
 package org.apache.seatunnel.connectors.seatunnel.jdbc.sink;
 
-import org.apache.seatunnel.shade.com.typesafe.config.Config;
-
 import org.apache.seatunnel.api.common.JobContext;
-import org.apache.seatunnel.api.common.PrepareFailException;
 import org.apache.seatunnel.api.configuration.ReadonlyConfig;
 import org.apache.seatunnel.api.serialization.DefaultSerializer;
 import org.apache.seatunnel.api.serialization.Serializer;
+import org.apache.seatunnel.api.sink.DataSaveMode;
 import org.apache.seatunnel.api.sink.SeaTunnelSink;
 import org.apache.seatunnel.api.sink.SinkAggregatedCommitter;
 import org.apache.seatunnel.api.sink.SinkWriter;
+import org.apache.seatunnel.api.sink.SupportDataSaveMode;
+import org.apache.seatunnel.api.sink.SupportMultiTableSink;
+import org.apache.seatunnel.api.table.catalog.Catalog;
+import org.apache.seatunnel.api.table.catalog.CatalogTable;
+import org.apache.seatunnel.api.table.catalog.TablePath;
+import org.apache.seatunnel.api.table.catalog.exception.CatalogException;
 import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.catalog.utils.CatalogUtils;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.config.JdbcOptions;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.config.JdbcSinkConfig;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.exception.JdbcConnectorException;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.JdbcDialect;
-import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.JdbcDialectLoader;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.dialectenum.FieldIdeEnum;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.state.JdbcAggregatedCommitInfo;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.state.JdbcSinkState;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.state.XidInfo;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.utils.JdbcCatalogUtils;
 
-import com.google.auto.service.AutoService;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-@AutoService(SeaTunnelSink.class)
+import static org.apache.seatunnel.api.common.SeaTunnelAPIErrorCode.HANDLE_SAVE_MODE_FAILED;
+
 public class JdbcSink
-        implements SeaTunnelSink<SeaTunnelRow, JdbcSinkState, XidInfo, JdbcAggregatedCommitInfo> {
+        implements SeaTunnelSink<SeaTunnelRow, JdbcSinkState, XidInfo, JdbcAggregatedCommitInfo>,
+                SupportDataSaveMode,
+                SupportMultiTableSink {
 
-    private Config pluginConfig;
-
-    private SeaTunnelRowType seaTunnelRowType;
+    private final SeaTunnelRowType seaTunnelRowType;
 
     private JobContext jobContext;
 
-    private JdbcSinkConfig jdbcSinkConfig;
+    private final JdbcSinkConfig jdbcSinkConfig;
 
-    private JdbcDialect dialect;
+    private final JdbcDialect dialect;
+
+    private final ReadonlyConfig config;
+
+    private final DataSaveMode dataSaveMode;
+
+    private final CatalogTable catalogTable;
+
+    public JdbcSink(
+            ReadonlyConfig config,
+            JdbcSinkConfig jdbcSinkConfig,
+            JdbcDialect dialect,
+            DataSaveMode dataSaveMode,
+            CatalogTable catalogTable) {
+        this.config = config;
+        this.jdbcSinkConfig = jdbcSinkConfig;
+        this.dialect = dialect;
+        this.dataSaveMode = dataSaveMode;
+        this.catalogTable = catalogTable;
+        this.seaTunnelRowType = catalogTable.getTableSchema().toPhysicalRowDataType();
+    }
 
     @Override
     public String getPluginName() {
@@ -64,16 +93,8 @@ public class JdbcSink
     }
 
     @Override
-    public void prepare(Config pluginConfig) throws PrepareFailException {
-        ReadonlyConfig config = ReadonlyConfig.fromConfig(pluginConfig);
-        this.jdbcSinkConfig = JdbcSinkConfig.of(config);
-        this.pluginConfig = pluginConfig;
-        this.dialect = JdbcDialectLoader.load(jdbcSinkConfig.getJdbcConnectionConfig().getUrl());
-    }
-
-    @Override
-    public SinkWriter<SeaTunnelRow, XidInfo, JdbcSinkState> createWriter(SinkWriter.Context context)
-            throws IOException {
+    public SinkWriter<SeaTunnelRow, XidInfo, JdbcSinkState> createWriter(
+            SinkWriter.Context context) {
         SinkWriter<SeaTunnelRow, XidInfo, JdbcSinkState> sinkWriter;
         if (jdbcSinkConfig.isExactlyOnce()) {
             sinkWriter =
@@ -85,9 +106,18 @@ public class JdbcSink
                             seaTunnelRowType,
                             new ArrayList<>());
         } else {
-            sinkWriter = new JdbcSinkWriter(context, dialect, jdbcSinkConfig, seaTunnelRowType);
+            if (catalogTable != null && catalogTable.getTableSchema().getPrimaryKey() != null) {
+                String keyName =
+                        catalogTable.getTableSchema().getPrimaryKey().getColumnNames().get(0);
+                int index = seaTunnelRowType.indexOf(keyName);
+                if (index > -1) {
+                    return new JdbcSinkWriter(
+                            context, dialect, jdbcSinkConfig, seaTunnelRowType, index);
+                }
+            }
+            sinkWriter =
+                    new JdbcSinkWriter(context, dialect, jdbcSinkConfig, seaTunnelRowType, null);
         }
-
         return sinkWriter;
     }
 
@@ -108,11 +138,6 @@ public class JdbcSink
             return Optional.of(new JdbcSinkAggregatedCommitter(jdbcSinkConfig));
         }
         return Optional.empty();
-    }
-
-    @Override
-    public void setTypeInfo(SeaTunnelRowType seaTunnelRowType) {
-        this.seaTunnelRowType = seaTunnelRowType;
     }
 
     @Override
@@ -139,5 +164,49 @@ public class JdbcSink
             return Optional.of(new DefaultSerializer<>());
         }
         return Optional.empty();
+    }
+
+    @Override
+    public DataSaveMode getUserConfigSaveMode() {
+        return dataSaveMode;
+    }
+
+    @Override
+    public void handleSaveMode(DataSaveMode saveMode) {
+        if (catalogTable != null) {
+            if (StringUtils.isBlank(jdbcSinkConfig.getDatabase())) {
+                return;
+            }
+            Optional<Catalog> catalogOptional =
+                    JdbcCatalogUtils.findCatalog(jdbcSinkConfig.getJdbcConnectionConfig(), dialect);
+            if (catalogOptional.isPresent()) {
+                try (Catalog catalog = catalogOptional.get()) {
+                    catalog.open();
+                    FieldIdeEnum fieldIdeEnumEnum = config.get(JdbcOptions.FIELD_IDE);
+                    String fieldIde =
+                            fieldIdeEnumEnum == null
+                                    ? FieldIdeEnum.ORIGINAL.getValue()
+                                    : fieldIdeEnumEnum.getValue();
+                    TablePath tablePath =
+                            TablePath.of(
+                                    jdbcSinkConfig.getDatabase()
+                                            + "."
+                                            + CatalogUtils.quoteTableIdentifier(
+                                                    jdbcSinkConfig.getTable(), fieldIde));
+                    if (!catalog.databaseExists(jdbcSinkConfig.getDatabase())) {
+                        catalog.createDatabase(tablePath, true);
+                    }
+                    catalogTable.getOptions().put("fieldIde", fieldIde);
+                    if (!catalog.tableExists(tablePath)) {
+                        catalog.createTable(tablePath, catalogTable, true);
+                    }
+                } catch (UnsupportedOperationException | CatalogException e) {
+                    // TODO Temporary fix, this feature has been changed in this pr
+                    // https://github.com/apache/seatunnel/pull/5645
+                } catch (Exception e) {
+                    throw new JdbcConnectorException(HANDLE_SAVE_MODE_FAILED, e);
+                }
+            }
+        }
     }
 }

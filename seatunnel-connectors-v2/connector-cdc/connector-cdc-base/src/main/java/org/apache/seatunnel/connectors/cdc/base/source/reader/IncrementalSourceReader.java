@@ -19,6 +19,7 @@ package org.apache.seatunnel.connectors.cdc.base.source.reader;
 
 import org.apache.seatunnel.api.source.Collector;
 import org.apache.seatunnel.api.source.SourceReader;
+import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.connectors.cdc.base.config.SourceConfig;
 import org.apache.seatunnel.connectors.cdc.base.source.event.CompletedSnapshotSplitsReportEvent;
 import org.apache.seatunnel.connectors.cdc.base.source.event.SnapshotSplitWatermark;
@@ -29,6 +30,7 @@ import org.apache.seatunnel.connectors.cdc.base.source.split.SourceSplitBase;
 import org.apache.seatunnel.connectors.cdc.base.source.split.state.IncrementalSplitState;
 import org.apache.seatunnel.connectors.cdc.base.source.split.state.SnapshotSplitState;
 import org.apache.seatunnel.connectors.cdc.base.source.split.state.SourceSplitStateBase;
+import org.apache.seatunnel.connectors.cdc.debezium.DebeziumDeserializationSchema;
 import org.apache.seatunnel.connectors.seatunnel.common.source.reader.RecordEmitter;
 import org.apache.seatunnel.connectors.seatunnel.common.source.reader.RecordsWithSplitIds;
 import org.apache.seatunnel.connectors.seatunnel.common.source.reader.SingleThreadMultiplexSourceReaderBase;
@@ -38,11 +40,13 @@ import org.apache.seatunnel.connectors.seatunnel.common.source.reader.fetcher.Si
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkState;
 
@@ -57,12 +61,11 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
 
     private final Map<String, SnapshotSplit> finishedUnackedSplits;
 
-    private final Map<String, IncrementalSplit> uncompletedIncrementalSplits;
-
     private volatile boolean running = false;
     private final int subtaskId;
 
     private final C sourceConfig;
+    private final DebeziumDeserializationSchema<T> debeziumDeserializationSchema;
 
     public IncrementalSourceReader(
             BlockingQueue<RecordsWithSplitIds<SourceRecords>> elementsQueue,
@@ -70,7 +73,8 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
             RecordEmitter<SourceRecords, T, SourceSplitStateBase> recordEmitter,
             SourceReaderOptions options,
             SourceReader.Context context,
-            C sourceConfig) {
+            C sourceConfig,
+            DebeziumDeserializationSchema<T> debeziumDeserializationSchema) {
         super(
                 elementsQueue,
                 new SingleThreadFetcherManager<>(elementsQueue, splitReaderSupplier::get),
@@ -79,8 +83,8 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
                 context);
         this.sourceConfig = sourceConfig;
         this.finishedUnackedSplits = new HashMap<>();
-        this.uncompletedIncrementalSplits = new HashMap<>();
         this.subtaskId = context.getIndexOfSubtask();
+        this.debeziumDeserializationSchema = debeziumDeserializationSchema;
     }
 
     @Override
@@ -110,15 +114,15 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
                     unfinishedSplits.add(split);
                 }
             } else {
-                // the incremental split is uncompleted
-                uncompletedIncrementalSplits.put(split.splitId(), split.asIncrementalSplit());
                 unfinishedSplits.add(split.asIncrementalSplit());
             }
         }
         // notify split enumerator again about the finished unacked snapshot splits
         reportFinishedSnapshotSplitsIfNeed();
         // add all un-finished splits (including incremental split) to SourceReaderBase
-        super.addSplits(unfinishedSplits);
+        if (!unfinishedSplits.isEmpty()) {
+            super.addSplits(unfinishedSplits);
+        }
     }
 
     @Override
@@ -142,7 +146,10 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
 
             for (SnapshotSplit split : finishedUnackedSplits.values()) {
                 completedSnapshotSplitWatermarks.add(
-                        new SnapshotSplitWatermark(split.splitId(), split.getHighWatermark()));
+                        new SnapshotSplitWatermark(
+                                split.splitId(),
+                                split.getLowWatermark(),
+                                split.getHighWatermark()));
             }
             CompletedSnapshotSplitsReportEvent reportEvent =
                     new CompletedSnapshotSplitsReportEvent();
@@ -162,26 +169,62 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
         if (split.isSnapshotSplit()) {
             return new SnapshotSplitState(split.asSnapshotSplit());
         } else {
+            IncrementalSplit incrementalSplit = split.asIncrementalSplit();
+            if (incrementalSplit.getCheckpointDataType() != null) {
+                log.info(
+                        "The incremental split[{}] has checkpoint datatype {} for restore.",
+                        incrementalSplit.splitId(),
+                        incrementalSplit.getCheckpointDataType());
+                debeziumDeserializationSchema.restoreCheckpointProducedType(
+                        incrementalSplit.getCheckpointDataType());
+            }
             return new IncrementalSplitState(split.asIncrementalSplit());
         }
     }
 
     @Override
     public List<SourceSplitBase> snapshotState(long checkpointId) {
-        // unfinished splits
         List<SourceSplitBase> stateSplits = super.snapshotState(checkpointId);
 
+        // unfinished splits
+        List<SourceSplitBase> unfinishedSplits =
+                stateSplits.stream()
+                        .filter(split -> !finishedUnackedSplits.containsKey(split.splitId()))
+                        .collect(Collectors.toList());
+
         // add finished snapshot splits that didn't receive ack yet
-        stateSplits.addAll(finishedUnackedSplits.values());
+        unfinishedSplits.addAll(finishedUnackedSplits.values());
 
-        // add incremental splits who are uncompleted
-        stateSplits.addAll(uncompletedIncrementalSplits.values());
+        if (isIncrementalSplitPhase(unfinishedSplits)) {
+            return snapshotCheckpointDataType(unfinishedSplits);
+        }
 
-        return stateSplits;
+        return unfinishedSplits;
     }
 
     @Override
     protected SourceSplitBase toSplitType(String splitId, SourceSplitStateBase splitState) {
         return splitState.toSourceSplit();
+    }
+
+    private boolean isIncrementalSplitPhase(List<SourceSplitBase> stateSplits) {
+        return stateSplits.size() == 1 && stateSplits.get(0).isIncrementalSplit();
+    }
+
+    private List<SourceSplitBase> snapshotCheckpointDataType(List<SourceSplitBase> stateSplits) {
+        if (!isIncrementalSplitPhase(stateSplits)) {
+            throw new IllegalStateException(
+                    "The splits should be incremental split when snapshot  checkpoint datatype");
+        }
+        IncrementalSplit incrementalSplit = stateSplits.get(0).asIncrementalSplit();
+        // Snapshot current datatype to checkpoint
+        SeaTunnelDataType<T> checkpointDataType = debeziumDeserializationSchema.getProducedType();
+        IncrementalSplit newIncrementalSplit =
+                new IncrementalSplit(incrementalSplit, checkpointDataType);
+        log.debug(
+                "Snapshot checkpoint datatype {} into split[{}] state.",
+                checkpointDataType,
+                incrementalSplit.splitId());
+        return Arrays.asList(newIncrementalSplit);
     }
 }

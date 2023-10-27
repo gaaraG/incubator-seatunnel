@@ -22,6 +22,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -62,10 +63,14 @@ public class ConstraintKey implements Serializable {
         public static ConstraintKeyColumn of(String columnName, ColumnSortType sortType) {
             return new ConstraintKeyColumn(columnName, sortType);
         }
+
+        public ConstraintKeyColumn copy() {
+            return ConstraintKeyColumn.of(columnName, sortType);
+        }
     }
 
     public enum ConstraintType {
-        KEY,
+        INDEX_KEY,
         UNIQUE_KEY,
         FOREIGN_KEY
     }
@@ -73,5 +78,11 @@ public class ConstraintKey implements Serializable {
     public enum ColumnSortType {
         ASC,
         DESC
+    }
+
+    public ConstraintKey copy() {
+        List<ConstraintKeyColumn> collect =
+                columnNames.stream().map(ConstraintKeyColumn::copy).collect(Collectors.toList());
+        return ConstraintKey.of(constraintType, constraintName, collect);
     }
 }

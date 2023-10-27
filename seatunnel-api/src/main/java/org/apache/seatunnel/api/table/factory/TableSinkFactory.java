@@ -34,10 +34,11 @@ public interface TableSinkFactory<IN, StateT, CommitInfoT, AggregatedCommitInfoT
      * We will never use this method now. So gave a default implement and return null.
      *
      * @param context TableFactoryContext
-     * @return
+     * @return return the sink created by this factory
      */
     default TableSink<IN, StateT, CommitInfoT, AggregatedCommitInfoT> createSink(
-            TableFactoryContext context) {
-        throw new UnsupportedOperationException("unsupported now");
+            TableSinkFactoryContext context) {
+        throw new UnsupportedOperationException(
+                "The Factory has not been implemented and the deprecated Plugin will be used.");
     }
 }

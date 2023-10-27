@@ -44,7 +44,6 @@ public class FlinkStarter implements Starter {
         this.appJar = Common.appStarterDir().resolve(APP_JAR_NAME).toString();
     }
 
-    @SuppressWarnings("checkstyle:RegexpSingleline")
     public static void main(String[] args) {
         FlinkStarter flinkStarter = new FlinkStarter(args);
         System.out.println(String.join(" ", flinkStarter.buildCommands()));
@@ -79,6 +78,14 @@ public class FlinkStarter implements Starter {
         // set job name
         command.add("--name");
         command.add(flinkCommandArgs.getJobName());
+        // set encryption
+        if (flinkCommandArgs.isEncrypt()) {
+            command.add("--encrypt");
+        }
+        // set decryption
+        if (flinkCommandArgs.isDecrypt()) {
+            command.add("--decrypt");
+        }
         // set extra system properties
         flinkCommandArgs.getVariables().stream()
                 .filter(Objects::nonNull)
